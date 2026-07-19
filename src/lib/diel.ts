@@ -261,7 +261,23 @@ export class DielEngine {
   }
 
   private emit() {
-    for (const listener of this.listeners) listener(this.state);
+    // Clone so React setState sees a new reference (in-place mutation would be ignored).
+    const snapshot: DielState = {
+      ...this.state,
+      filters: { ...this.state.filters },
+      events: [...this.state.events],
+      filtered: [...this.state.filtered],
+      stats: {
+        ...this.state.stats,
+        tagBars: [...this.state.stats.tagBars],
+        clusterBars: [...this.state.stats.clusterBars],
+        priceScatter: [...this.state.stats.priceScatter],
+        valueAiScatter: [...this.state.stats.valueAiScatter],
+        dailyVolume: [...this.state.stats.dailyVolume],
+        opportunities: [...this.state.stats.opportunities],
+      },
+    };
+    for (const listener of this.listeners) listener(snapshot);
   }
 
   private derive() {
