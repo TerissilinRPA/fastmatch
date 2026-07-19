@@ -164,6 +164,27 @@ export function analyzeJobs(jobs: Job[], clusterCount = 5): AnalyzedJob[] {
     const tagMedian = medians.get(job.tag_name) ?? median(jobs.map((j) => j.budget).filter(Boolean));
     const { band, ratio } = priceBandFor(job.budget, tagMedian);
     const ai = aiReplaceability(job);
+    const businessValue = Math.round(
+      Math.max(
+        8,
+        Math.min(
+          96,
+          40 +
+            Math.min(28, Math.log2(job.freelance_offers_count + 1) * 8) +
+            (band === "overpriced" ? 18 : band === "fair" ? 10 : band === "underpriced" ? 4 : 0) +
+            Math.min(14, Math.log10(Math.max(job.budget, 1)) * 4),
+        ),
+      ),
+    );
+    const aiPct = Math.round(ai.score * 100);
+    const pricePts =
+      band === "overpriced" ? 85 : band === "fair" ? 65 : band === "underpriced" ? 55 : 40;
+    const opportunityScore = Math.round(
+      0.42 * businessValue +
+        0.32 * aiPct +
+        0.14 * Math.min(100, job.freelance_offers_count * 5) +
+        0.12 * pricePts,
+    );
     return {
       ...job,
       priceBand: band,
@@ -173,6 +194,8 @@ export function analyzeJobs(jobs: Job[], clusterCount = 5): AnalyzedJob[] {
       aiReplaceScore: ai.score,
       aiReplaceLabel: ai.label,
       aiNote: ai.note,
+      businessValue,
+      opportunityScore,
     };
   });
 }
@@ -227,10 +250,23 @@ export function buildDashboard(jobs: Job[]): { analyzed: AnalyzedJob[]; stats: D
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-30);
 
-  const opportunities = analyzed
-    .filter((j) => j.priceBand === "underpriced" && j.aiReplaceLabel !== "low" && j.budget > 0)
-    .sort((a, b) => b.aiReplaceScore - a.aiReplaceScore || a.priceRatio - b.priceRatio)
+  const opportunities = [...analyzed]
+    .filter((j) => j.budget > 0)
+    .sort((a, b) => b.opportunityScore - a.opportunityScore)
     .slice(0, 40);
+
+  const valueAiScatter = analyzed
+    .filter((j) => j.budget > 0)
+    .slice(0, 500)
+    .map((j) => ({
+      id: j.id,
+      title: j.title,
+      businessValue: j.businessValue,
+      ai: Math.round(j.aiReplaceScore * 100),
+      priceBand: j.priceBand,
+      opportunityScore: j.opportunityScore,
+      tag: j.tag_name,
+    }));
 
   const stats: DashboardStats = {
     total: analyzed.length,
@@ -254,6 +290,7 @@ export function buildDashboard(jobs: Job[]): { analyzed: AnalyzedJob[]; stats: D
       priceBand: j.priceBand,
       clusterId: j.clusterId,
     })),
+    valueAiScatter,
     dailyVolume,
     opportunities,
   };

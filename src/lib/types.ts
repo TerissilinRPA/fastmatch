@@ -17,6 +17,20 @@ export type Job = {
 };
 
 export type PriceBand = "underpriced" | "fair" | "overpriced" | "unpriced";
+export type AiLabel = "high" | "medium" | "low";
+
+/** Named opportunity lenses (DIEL filter presets). */
+export type OpportunityPreset =
+  | "all"
+  | "expensive_ai"
+  | "cheap_ai"
+  | "ai_high"
+  | "overpriced"
+  | "underpriced"
+  | "quick_win"
+  | "automate_first";
+
+export type OpportunitySort = "opportunity" | "budget" | "applicants" | "ai";
 
 export type AnalyzedJob = Job & {
   priceBand: PriceBand;
@@ -24,8 +38,12 @@ export type AnalyzedJob = Job & {
   tagMedian: number;
   clusterId: number;
   aiReplaceScore: number;
-  aiReplaceLabel: "high" | "medium" | "low";
+  aiReplaceLabel: AiLabel;
   aiNote: string;
+  /** 0–100 business value proxy (demand × priced budget signal). */
+  businessValue: number;
+  /** 0–100 ranked opportunity score. */
+  opportunityScore: number;
 };
 
 export type SyncResult = {
@@ -62,6 +80,16 @@ export type DashboardStats = {
     tagMedian: number;
     priceBand: PriceBand;
     clusterId: number;
+  }[];
+  /** Business value × AI feasibility for quadrant chart. */
+  valueAiScatter: {
+    id: string;
+    title: string;
+    businessValue: number;
+    ai: number;
+    priceBand: PriceBand;
+    opportunityScore: number;
+    tag: string;
   }[];
   dailyVolume: { date: string; count: number }[];
   opportunities: AnalyzedJob[];

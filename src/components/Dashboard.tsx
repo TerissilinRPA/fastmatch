@@ -17,8 +17,8 @@ import {
   YAxis,
   ZAxis,
 } from "recharts";
-import { DielEngine, type DielState } from "@/lib/diel";
-import type { AnalyzedJob, SyncResult } from "@/lib/types";
+import { DielEngine, OPPORTUNITY_PRESETS, type DielState } from "@/lib/diel";
+import type { AiLabel, AnalyzedJob, OpportunitySort, SyncResult } from "@/lib/types";
 
 const BAND_COLOR: Record<string, string> = {
   underpriced: "#1FA6A0",
@@ -143,11 +143,9 @@ export function Dashboard() {
             </button>
             <button
               className="fm-btn ghost"
-              onClick={() => {
-                diel.newEvent({ type: "filter.tag", at: new Date().toISOString(), tag: null });
-                diel.newEvent({ type: "filter.priceBand", at: new Date().toISOString(), band: null });
-                diel.newEvent({ type: "filter.cluster", at: new Date().toISOString(), clusterId: null });
-              }}
+              onClick={() =>
+                diel.newEvent({ type: "filter.reset", at: new Date().toISOString() })
+              }
             >
               Reset filters
             </button>
@@ -398,11 +396,187 @@ export function Dashboard() {
             </div>
           </section>
 
+          <section className="fm-panel chart-panel">
+            <div className="fm-panel-head">
+              <h2>Business value × AI feasibility</h2>
+              <span>ควอดแรนต์ · Deloitte-inspired screening</span>
+            </div>
+            <div className="chart-box tall">
+              <ResponsiveContainer width="100%" height={340}>
+                <ScatterChart margin={{ top: 12, right: 12, bottom: 12, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(11,31,42,0.08)" />
+                  <XAxis
+                    type="number"
+                    dataKey="ai"
+                    name="AI"
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${v}`}
+                    label={{ value: "AI automation →", position: "insideBottom", offset: -4, fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="businessValue"
+                    name="Value"
+                    domain={[0, 100]}
+                    tickFormatter={(v) => `${v}`}
+                    label={{ value: "Business value →", angle: -90, position: "insideLeft", fontSize: 11 }}
+                  />
+                  <ZAxis range={[36, 36]} />
+                  <Tooltip
+                    content={({ payload }) => {
+                      const p = payload?.[0]?.payload as
+                        | {
+                            title?: string;
+                            ai?: number;
+                            businessValue?: number;
+                            priceBand?: string;
+                            opportunityScore?: number;
+                            tag?: string;
+                          }
+                        | undefined;
+                      if (!p) return null;
+                      return (
+                        <div className="tip">
+                          <div>
+                            <strong>{p.tag}</strong>
+                          </div>
+                          <div>{p.title}</div>
+                          <div>
+                            AI {p.ai} · Value {p.businessValue} · Opp {p.opportunityScore} ·{" "}
+                            {p.priceBand}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter
+                    data={state.stats.valueAiScatter}
+                    cursor="pointer"
+                    onClick={(d) => {
+                      const id = (d as { id?: string }).id;
+                      const job = state.filtered.find((j) => j.id === id) ?? null;
+                      if (job) setSelected(job);
+                    }}
+                  >
+                    {state.stats.valueAiScatter.map((p) => (
+                      <Cell key={p.id} fill={BAND_COLOR[p.priceBand] ?? "#888"} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="chart-footnote">
+              สีตามราคาเทียบกลุ่ม · มุมขวาบน = value สูง + AI ทำแทนได้มาก · มุมซ้ายบน = จ้างคน / AI
+              ช่วย
+            </p>
+          </section>
+
           <section className="fm-panel">
             <div className="fm-panel-head">
               <h2>Opportunity desk</h2>
-              <span>จ้างถูก + AI ช่วยได้ · คลิกเพื่อดูบทวิเคราะห์</span>
+              <span>
+                {state.stats.opportunities.length.toLocaleString("th-TH")} /{" "}
+                {state.stats.total.toLocaleString("th-TH")} งาน · preset + search
+              </span>
             </div>
+
+            <div className="opp-presets" role="group" aria-label="กรองโอกาส">
+              {OPPORTUNITY_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  title={p.hint}
+                  className={`opp-preset ${state.filters.preset === p.id ? "active" : ""}`}
+                  onClick={() =>
+                    diel.newEvent({
+                      type: "filter.preset",
+                      at: new Date().toISOString(),
+                      preset: p.id,
+                    })
+                  }
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="opp-controls">
+              <label className="opp-field grow">
+                <span>ค้นหา</span>
+                <input
+                  className="fm-input"
+                  type="search"
+                  placeholder="เช่น content, website, admin"
+                  value={state.filters.search}
+                  onChange={(e) =>
+                    diel.newEvent({
+                      type: "filter.search",
+                      at: new Date().toISOString(),
+                      query: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="opp-field">
+                <span>AI</span>
+                <select
+                  className="fm-select"
+                  value={state.filters.aiLabel ?? "all"}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    diel.newEvent({
+                      type: "filter.aiLabel",
+                      at: new Date().toISOString(),
+                      label: v === "all" ? null : (v as AiLabel),
+                    });
+                  }}
+                >
+                  <option value="all">ทุกระดับ</option>
+                  <option value="high">สูง</option>
+                  <option value="medium">กลาง</option>
+                  <option value="low">ต่ำ</option>
+                </select>
+              </label>
+              <label className="opp-field">
+                <span>เรียงตาม</span>
+                <select
+                  className="fm-select"
+                  value={state.filters.sort}
+                  onChange={(e) =>
+                    diel.newEvent({
+                      type: "filter.sort",
+                      at: new Date().toISOString(),
+                      sort: e.target.value as OpportunitySort,
+                    })
+                  }
+                >
+                  <option value="opportunity">Opportunity score</option>
+                  <option value="budget">งบประมาณ</option>
+                  <option value="applicants">จำนวนผู้สมัคร</option>
+                  <option value="ai">AI feasibility</option>
+                </select>
+              </label>
+              <label className="opp-field">
+                <span>แสดง</span>
+                <select
+                  className="fm-select"
+                  value={String(state.filters.limit)}
+                  onChange={(e) =>
+                    diel.newEvent({
+                      type: "filter.limit",
+                      at: new Date().toISOString(),
+                      limit: Number(e.target.value),
+                    })
+                  }
+                >
+                  <option value="25">25</option>
+                  <option value="40">40</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+
             <div className="table-wrap">
               <table>
                 <thead>
@@ -410,9 +584,10 @@ export function Dashboard() {
                     <th>Title</th>
                     <th>Tag</th>
                     <th>Budget</th>
-                    <th>vs median</th>
+                    <th>ราคาเทียบกลุ่ม</th>
+                    <th>โอกาส</th>
                     <th>AI</th>
-                    <th>Cluster</th>
+                    <th>ผู้สมัคร</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -421,16 +596,33 @@ export function Dashboard() {
                       <td>{job.title}</td>
                       <td>{job.tag_name}</td>
                       <td>{baht(job.budget)}</td>
-                      <td>{(job.priceRatio * 100).toFixed(0)}%</td>
                       <td>
-                        <span className={`pill ${job.aiReplaceLabel}`}>{job.aiReplaceLabel}</span>
+                        <span className={`pill band-${job.priceBand}`}>
+                          {job.priceBand === "overpriced"
+                            ? "แพงกว่าปกติ"
+                            : job.priceBand === "underpriced"
+                              ? "ถูกกว่าปกติ"
+                              : job.priceBand === "fair"
+                                ? "เรทปกติ"
+                                : "ไม่ระบุ"}
+                        </span>
                       </td>
-                      <td>C{job.clusterId}</td>
+                      <td className="num">{job.opportunityScore}/100</td>
+                      <td>
+                        <span className={`pill ${job.aiReplaceLabel}`}>
+                          {job.aiReplaceLabel} {(job.aiReplaceScore * 100).toFixed(0)}
+                        </span>
+                      </td>
+                      <td className="num">{job.freelance_offers_count}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <p className="chart-footnote">
+              โมเดลคัดกรองเชิงกลยุทธ์: Business value × Automation feasibility — ไม่ใช่ราคามาตรฐานตลาด
+              และงานที่ไม่ระบุงบจะไม่ถูกจัดว่าแพงหรือถูก
+            </p>
           </section>
 
           <section className="fm-panel">
@@ -461,22 +653,24 @@ export function Dashboard() {
             </header>
             <p className="meta-line">
               {selected.tag_name} · {baht(selected.budget)} · median {baht(selected.tagMedian)} ·{" "}
-              {selected.priceBand}
+              {selected.priceBand} · Opportunity {selected.opportunityScore}/100
             </p>
             <p>{selected.description}</p>
             <div className="ai-box">
               <strong>บทวิเคราะห์ AI</strong>
               <p>
-                คะแนนแทนที่ได้ {(selected.aiReplaceScore * 100).toFixed(0)}% ({selected.aiReplaceLabel}) —{" "}
-                {selected.aiNote}
+                คะแนนแทนที่ได้ {(selected.aiReplaceScore * 100).toFixed(0)}% ({selected.aiReplaceLabel}) —
+                Business value {selected.businessValue}/100 — {selected.aiNote}
               </p>
               <p>
                 มุมราคา: งบอยู่ที่ {(selected.priceRatio * 100).toFixed(0)}% ของ median หมวด —
                 {selected.priceBand === "underpriced"
                   ? " จ้างถูกกว่าตลาด มีศักยภาพรับงาน"
                   : selected.priceBand === "overpriced"
-                    ? " แพงกว่าปกติ ควรเจรจาหรือข้าม"
-                    : " เรทปกติ"}
+                    ? " แพงกว่าปกติ — ถ้า AI ช่วยได้ คุ้มที่จะรับ"
+                    : selected.priceBand === "fair"
+                      ? " เรทปกติ"
+                      : " ไม่ระบุงบ"}
               </p>
             </div>
           </article>
