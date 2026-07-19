@@ -72,6 +72,7 @@ export async function syncJobs(options: {
   let stoppedReason: SyncResult["stoppedReason"] = "exhausted";
   let stoppedAtId: string | undefined;
   let duplicateId: string | undefined;
+  let totalInStore = 0;
 
   try {
     for (let page = 1; page <= maxPages; page += 1) {
@@ -103,7 +104,28 @@ export async function syncJobs(options: {
       if (stoppedReason === "duplicate") break;
     }
 
-    const totalInStore = await appendJobs(insertedBatch);
+    try {
+      totalInStore = await appendJobs(insertedBatch);
+    } catch (writeErr) {
+      // Still succeed the reconcile; serverless may not persist across instances
+      totalInStore = known.size;
+      return {
+        ok: true,
+        inserted: insertedBatch.length,
+        scanned,
+        stoppedReason,
+        stoppedAtId,
+        duplicateId,
+        pagesFetched,
+        totalInStore,
+        newJobs: insertedBatch,
+        error:
+          writeErr instanceof Error
+            ? `persist_warning: ${writeErr.message}`
+            : "persist_warning",
+      };
+    }
+
     return {
       ok: true,
       inserted: insertedBatch.length,

@@ -26,6 +26,10 @@ async function readJson(filePath: string): Promise<StoreFile | null> {
 }
 
 async function writableRuntimePath(): Promise<string> {
+  // Vercel / serverless filesystems are read-only except /tmp
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return TMP_RUNTIME;
+  }
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.access(DATA_DIR);
